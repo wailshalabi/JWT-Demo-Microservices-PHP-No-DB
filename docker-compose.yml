@@ -1,0 +1,38 @@
+services:
+  caddy:
+    image: caddy:2.8
+    ports:
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./frontend:/srv:ro
+      - ./certs:/certs:ro
+    depends_on:
+      - auth
+      - catalog
+      - orders
+
+  auth:
+    build: ./auth
+    volumes:
+      - ./shared:/shared:ro
+    environment:
+      - JWT_ISSUER=https://localhost
+      - JWT_AUDIENCE=shop-api
+      - JWT_KID=demo-key-1
+
+  catalog:
+    build: ./catalog
+    volumes:
+      - ./shared:/shared:ro
+    environment:
+      - JWT_ISSUER=https://localhost
+      - JWT_AUDIENCE=shop-api
+
+  orders:
+    build: ./orders
+    volumes:
+      - ./shared:/shared:ro
+    environment:
+      - JWT_ISSUER=https://localhost
+      - JWT_AUDIENCE=shop-api

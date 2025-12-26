@@ -1,0 +1,25 @@
+{
+  # Disable automatic HTTPS because we provide our own self-signed cert files.
+  auto_https off
+}
+
+https://localhost {
+  tls /certs/localhost.pem /certs/localhost-key.pem
+
+  # Frontend static files
+  root * /srv
+  file_server
+
+  # API routes
+  handle_path /api/auth/* {
+    reverse_proxy auth:8080
+  }
+
+  handle_path /api/catalog/* {
+    reverse_proxy catalog:8080
+  }
+
+  handle_path /api/orders/* {
+    reverse_proxy orders:8080
+  }
+}
