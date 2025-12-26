@@ -1,49 +1,49 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>JWT Microservices Demo (RS256 + Offline Verification)</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>JWT Microservices Refresh Demo (Mobile-style)</title>
   <style>
     body { font-family: system-ui, Arial, sans-serif; margin: 24px; }
     .row { display: flex; gap: 24px; flex-wrap: wrap; }
-    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; max-width: 520px; flex: 1; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; max-width: 560px; flex: 1; }
     button { padding: 10px 14px; border-radius: 10px; border: 1px solid #aaa; background: #f7f7f7; cursor: pointer; }
-    input { padding: 10px; border-radius: 10px; border: 1px solid #ccc; width: 100%; }
     pre { background: #0b1020; color: #e8ecff; padding: 12px; border-radius: 12px; overflow: auto; }
-    code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    input { padding: 10px; border-radius: 10px; border: 1px solid #ccc; width: 100%; }
     .hint { color: #555; font-size: 14px; }
   </style>
 </head>
 <body>
-  <h1>JWT Microservices Demo</h1>
+  <h1>JWT Microservices Refresh Demo</h1>
   <p class="hint">
-    This demo logs in once (hardcoded credentials) to get an <b>RS256</b> JWT from the auth service,
-    then calls two microservices (<code>catalog</code> and <code>orders</code>) using the same token.
-    The microservices validate the JWT <b>offline</b> using the public key file (no auth-service call).
+    Login once (hardcoded creds), get a <b>10s</b> RS256 JWT access token + <b>10m</b> opaque refresh token.
+    When access token expires, UI calls <code>/refresh</code> and retries the API call.
   </p>
 
   <div class="row">
     <div class="card">
-      <h2>1) Login</h2>
+      <h2>Login</h2>
       <p class="hint">Use: <code>demo@example.com</code> / <code>secret123</code></p>
       <label>Email</label>
-      <input id="email" value="demo@example.com" />
+      <input id="email" value="demo@example.com">
       <label style="margin-top:8px;display:block;">Password</label>
-      <input id="password" type="password" value="secret123" />
+      <input id="password" type="password" value="secret123">
       <div style="margin-top:12px;">
-        <button id="loginBtn">Login → Get JWT</button>
+        <button id="loginBtn">Login</button>
       </div>
-      <h3>Access Token (JWT)</h3>
-      <pre id="tokenBox">(not logged in)</pre>
+      <h3>Tokens (stored in JS memory)</h3>
+      <pre id="tokensBox">(not logged in)</pre>
     </div>
 
     <div class="card">
-      <h2>2) Call Microservices</h2>
-      <div style="display:flex; gap: 10px; flex-wrap: wrap;">
+      <h2>Call APIs</h2>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
         <button id="catalogBtn">GET /catalog/products</button>
         <button id="ordersBtn">GET /orders/ping</button>
+        <button id="refreshBtn">Refresh Token</button>
       </div>
+      <p class="hint">Try: login → call → wait 10–15s → call again (auto refresh)</p>
       <h3>Response</h3>
       <pre id="respBox">(no calls yet)</pre>
     </div>
@@ -51,9 +51,15 @@
 
 <script>
 let accessToken = null;
+let refreshToken = null;
 
-function setText(id, text) {
-  document.getElementById(id).textContent = text;
+function setText(id, text) { document.getElementById(id).textContent = text; }
+
+function showTokens() {
+  setText('tokensBox', JSON.stringify({
+    access_token: accessToken ? accessToken.slice(0, 40) + '…' : null,
+    refresh_token: refreshToken ? refreshToken.slice(0, 16) + '…' : null
+  }, null, 2));
 }
 
 async function login() {
@@ -63,20 +69,39 @@ async function login() {
 
   const res = await fetch('/api/auth/login', {
     method: 'POST',
-    headers: {'Content-Type': 'application/json'},
+    headers: {'Content-Type':'application/json'},
     body: JSON.stringify({email, password})
   });
 
-  const data = await res.json().catch(() => ({}));
+  const text = await res.text();
+  let data = {};
+  try { data = JSON.parse(text); } catch { data = {raw: text.slice(0, 300)}; }
   if (!res.ok) {
+    accessToken = null; refreshToken = null;
+    showTokens();
     setText('respBox', JSON.stringify(data, null, 2));
-    setText('tokenBox', '(not logged in)');
-    accessToken = null;
     return;
   }
+
   accessToken = data.access_token;
-  setText('tokenBox', accessToken);
-  setText('respBox', JSON.stringify({message: 'Logged in. Token stored in JS memory only.'}, null, 2));
+  refreshToken = data.refresh_token;
+  showTokens();
+  setText('respBox', JSON.stringify({message:'Logged in. Access token expires in ~10s.'}, null, 2));
+}
+
+async function refresh() {
+  const res = await fetch('/api/auth/refresh', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({refresh_token: refreshToken})
+  });
+  const text = await res.text();
+  let data = {};
+  try { data = JSON.parse(text); } catch { data = {raw: text.slice(0, 300)}; }
+  if (!res.ok) throw new Error(data.message || data.error || 'refresh_failed');
+  accessToken = data.access_token;
+  refreshToken = data.refresh_token;
+  showTokens();
 }
 
 async function callApi(path) {
@@ -84,17 +109,43 @@ async function callApi(path) {
     setText('respBox', 'Please login first.');
     return;
   }
+
   setText('respBox', '(calling ' + path + ' ...)');
-  const res = await fetch(path, {
-    headers: {'Authorization': 'Bearer ' + accessToken}
-  });
-  const data = await res.json().catch(() => ({}));
+
+  let res = await fetch(path, { headers: { 'Authorization': 'Bearer ' + accessToken } });
+  if (res.status === 401) {
+    // Try refresh once, then retry request
+    try {
+      await refresh();
+      res = await fetch(path, { headers: { 'Authorization': 'Bearer ' + accessToken } });
+    } catch (e) {
+      accessToken = null; refreshToken = null;
+      showTokens();
+      setText('respBox', JSON.stringify({error:'refresh_failed', message: String(e)}, null, 2));
+      return;
+    }
+  }
+
+  const text = await res.text();
+  let data = {};
+  try { data = JSON.parse(text); } catch { data = {raw: text.slice(0, 300)}; }
   setText('respBox', JSON.stringify({status: res.status, body: data}, null, 2));
 }
 
 document.getElementById('loginBtn').addEventListener('click', login);
 document.getElementById('catalogBtn').addEventListener('click', () => callApi('/api/catalog/products'));
 document.getElementById('ordersBtn').addEventListener('click', () => callApi('/api/orders/ping'));
+document.getElementById('refreshBtn').addEventListener('click', async () => {
+  if (!refreshToken) { setText('respBox', 'Please login first.'); return; }
+  setText('respBox', '(refreshing token...)');
+  try {
+    await refresh();
+    setText('respBox', JSON.stringify({message:'Refreshed. New access token issued.'}, null, 2));
+  } catch (e) {
+    setText('respBox', JSON.stringify({error:'refresh_failed', message:String(e)}, null, 2));
+  }
+});
+showTokens();
 </script>
 </body>
 </html>

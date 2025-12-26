@@ -6,6 +6,12 @@ require __DIR__ . '/../vendor/autoload.php';
 use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
 
+function json_out(int $status, array $data): void {
+    http_response_code($status);
+    header('Content-Type: application/json');
+    echo json_encode($data, JSON_PRETTY_PRINT);
+}
+
 function get_bearer_token(): string {
     $hdr = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
     if (!preg_match('/^Bearer\s+(.+)$/i', $hdr, $m)) {
@@ -20,18 +26,15 @@ function verify_jwt(string $jwt): object {
 
     $publicKey = file_get_contents('/shared/jwt-public.pem');
     if (!$publicKey) {
-        throw new RuntimeException('Public key not found');
+        throw new RuntimeException('JWT public key missing');
     }
 
-    // Decode+verify signature (RS256)
     $decoded = JWT::decode($jwt, new Key($publicKey, 'RS256'));
 
-    // Validate issuer
     if (($decoded->iss ?? null) !== $issuer) {
         throw new RuntimeException('Invalid issuer');
     }
 
-    // Validate audience (string or array)
     $audClaim = $decoded->aud ?? null;
     $audOk = is_string($audClaim) ? ($audClaim === $aud)
           : (is_array($audClaim) && in_array($aud, $audClaim, true));
@@ -39,16 +42,5 @@ function verify_jwt(string $jwt): object {
         throw new RuntimeException('Invalid audience');
     }
 
-    // exp is validated by library during decode based on current time, but we keep a sanity check:
-    if (!isset($decoded->exp) || !is_numeric($decoded->exp)) {
-        throw new RuntimeException('Missing exp');
-    }
-
     return $decoded;
-}
-
-function json_out(int $status, array $data): void {
-    http_response_code($status);
-    header('Content-Type: application/json');
-    echo json_encode($data, JSON_PRETTY_PRINT);
 }

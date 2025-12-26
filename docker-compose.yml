@@ -19,7 +19,7 @@ services:
     environment:
       - JWT_ISSUER=https://localhost
       - JWT_AUDIENCE=shop-api
-      - JWT_KID=demo-key-1
+      - JWT_KID=demo-key
 
   catalog:
     build: ./catalog
