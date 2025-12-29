@@ -175,11 +175,4 @@ TLS certificates for Caddy:
 
 ## Security disclaimer
 
-This project is for educational purposes only.
-Do not use this implementation directly in production. Real systems should use secure key management, durable refresh token storage, and proper monitoring.
-
----
-
-## License
-
-This demo is provided as-is for learning and experimentation.
+This project is for educational purposes only, do not use this implementation directly in production Real systems.
